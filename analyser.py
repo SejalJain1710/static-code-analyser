@@ -1,9 +1,14 @@
 import ast
+import textwrap
+import unittest
+import ast
+from io import StringIO
+from contextlib import redirect_stdout
 
 class UnnecessaryElseChecker(ast.NodeVisitor):
-    def __init__(self, filename):
+    def __init__(self, filename=None):
         self.unnecessary_else_blocks = []
-        self.filename = filename
+        self.filename = filename or "unknown_file"
 
     def visit_FunctionDef(self, node):
         self.check_unnecessary_else(node)
@@ -34,7 +39,7 @@ class UnnecessaryElseChecker(ast.NodeVisitor):
         else:
             print("Unnecessary else blocks found:")
             for item in self.unnecessary_else_blocks:
-                print(f"Function '{item['function_name']}' at line {item['line_number']} contains an unnecessary else block.")
+                print(f"{item['line_number']} line of '{item['file_name']}' file contains an unnecessary else block.")
 
 def analyze_code_for_unnecessary_else(file_path):
     with open(file_path, "r") as source_code:
@@ -43,7 +48,61 @@ def analyze_code_for_unnecessary_else(file_path):
     checker.visit(tree)
     checker.report()
 
+class TestUnneccesaryElseChecker(unittest.TestCase):
+    def run_analyser_on_code(self, code):
+        with StringIO() as buf, redirect_stdout(buf):
+            tree = ast.parse(code)
+            checker = UnnecessaryElseChecker(filename="test_code")
+            checker.visit(tree)
+            checker.report()
+            return buf.getvalue()
+        
+    def test_no_unnecessary_else(self):
+        code = textwrap.dedent("""
+            def test():
+                if 4>5:
+                    return "greater"
+                return "less"
+        """)
+        output = self.run_analyser_on_code(code)
+        self.assertIn("No unnecessary else blocks found.", output)
+
+    def test_single_unnecessary_else(self):
+        code = textwrap.dedent("""
+            def test():
+                if 4>5:
+                    return "greater"
+                else:
+                    return "less"
+        """)
+        output = self.run_analyser_on_code(code)
+        self.assertIn("Unnecessary else blocks found:", output)
+
+    def test_nested_unnecessary_else(self):
+        code = textwrap.dedent("""
+            def test_func():
+                if 5 > 3:
+                    if 2 < 4:
+                        return "inner condition true"
+                    else:
+                        return "inner condition false"
+                else:
+                    return "outer condition false"
+        """)
+        output = self.run_analyser_on_code(code)
+        self.assertIn("Unnecessary else blocks found:", output)
+
+    def test_func_without_if_else(self):
+        code = textwrap.dedent("""
+            def test_func():
+                return "no conditions"
+        """)
+        output = self.run_analyser_on_code(code)
+        self.assertIn("No unnecessary else blocks found.", output)
+
 
 if __name__ == "__main__":
-    file_path = "test.py"
-    analyze_code_for_unnecessary_else(file_path)
+    # file_path = "test.py"
+    # analyze_code_for_unnecessary_else(file_path)
+
+    unittest.main()
